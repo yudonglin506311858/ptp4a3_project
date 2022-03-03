@@ -22,7 +22,7 @@ library(limma)
 library("Rgraphviz")
 setwd("D:/anxiiuli_data/ptp4a3/count")
 
-
+setwd("D:/课题总结/ptp4a3转录组分析/figure3-kd转录组分析")
 
 
 #读入数据并合并
@@ -69,7 +69,6 @@ dim(cts)
 write.csv(cts,"ensembl_gene_expression_count_ptp4a3.csv")
 
 
-
 #基因ID转换
 library('biomaRt')
 library("curl")
@@ -77,9 +76,9 @@ library(ensembldb)
 library(dplyr)
 library(AnnotationHub)
 
-mart <- useDataset("mmapiens_gene_ensembl", useMart("ensembl"))
-saveRDS(mart,"mart_human.rds")
-mart<-readRDS("mart_human.rds")
+mart <- useDataset("mmusculus_gene_ensembl", useMart("ensembl"))
+saveRDS(mart,"mart_mmusculus.rds")
+mart<-readRDS("mart_mmusculus.rds")
 
 gene<-read.csv("ensembl_gene_expression_count_anxiuli.csv")
 gene<-as.matrix(gene$X)
@@ -88,7 +87,7 @@ colnames(gene)[1]<-"ensembl_gene_id"
 #listAttributes(mart)
 id_con<-getBM(attributes=c('ensembl_gene_id','external_gene_name',"description"),filters = 'ensembl_gene_id', values = gene, mart = mart)
 head(id_con)
-write.csv(id_con,"human_gene_ensembl_transition.csv")
+write.csv(id_con,"mouse_gene_ensembl_transition.csv")
 
 
 
@@ -102,6 +101,7 @@ head(cts)
 head(id_con)
 cts<-merge(id_con,cts,by=c("ensembl_gene_id"))
 dim(cts)
+cts<-cts[which(rowSums(cts[c(4:7)]) > 0),]
 write.csv(cts,file = "ternimalE_count_genesymbol.csv",row.names = F)
 cts<-cts[,-1]
 cts$external_gene_name<-make.names(cts$external_gene_name, unique = TRUE)
@@ -398,13 +398,17 @@ ekegg <- enrichKEGG(
   
 )
 
+ekegg1 = setReadable(ekegg,
+                  OrgDb = "org.Mm.eg.db",
+                  keyType = "ENTREZID")
+head(ekegg1@result$geneID)
 
-barplot(ekegg, showCategory =50)
+barplot(ekegg1, showCategory =50)
 ggsave(paste0("barplot_KEGG_down_",resname,".pdf"),width=20,height=20)
 
-dotplot(ekegg, showCategory =50)
+dotplot(ekegg1, showCategory =50)
 ggsave(paste0("dotplot_KEGG_down_",resname,".pdf"),width=20,height=20)
-write.csv(ekegg,file=paste0("KEGG_down_",resname,".csv"))
+write.csv(ekegg1,file=paste0("KEGG_down_",resname,".csv"))
 
 
 ego <- enrichGO(gene = gene,
@@ -534,14 +538,17 @@ ekegg <- enrichKEGG(
   qvalueCutoff  = 0.05
   
 )
+ekegg1 = setReadable(ekegg,
+                     OrgDb = "org.Mm.eg.db",
+                     keyType = "ENTREZID")
+head(ekegg1@result$geneID)
 
-
-barplot(ekegg, showCategory =50)
+barplot(ekegg1, showCategory =50)
 ggsave(paste0("barplot_KEGG_up_",resname,".pdf"),width=20,height=20)
 
-dotplot(ekegg, showCategory =50)
+dotplot(ekegg1, showCategory =50)
 ggsave(paste0("dotplot_KEGG_up_",resname,".pdf"),width=20,height=20)
-write.csv(ekegg,file=paste0("KEGG_up_",resname,".csv"))
+write.csv(ekegg1,file=paste0("KEGG_up_",resname,".csv"))
 
 
 kk2 = setReadable(ekegg,
@@ -573,6 +580,57 @@ write.csv(ego,file=paste0("GO_MFBPCC_up_",resname,".csv"))
 
 
 
+library(clusterProfiler)
+library("org.Mm.eg.db")
+library(ggplot2)
+
+b<-rownames(diff_gene_up)
+eg = bitr(b, fromType="SYMBOL", toType="ENTREZID", OrgDb ="org.Mm.eg.db")
+up <- eg[,2]
+up<-as.data.frame(up)
+colnames(up)<-c("up")
+head(up)
+up<-c(up)
+
+b<-rownames(diff_gene_down)
+eg = bitr(b, fromType="SYMBOL", toType="ENTREZID", OrgDb ="org.Mm.eg.db")
+down <- eg[,2]
+down<-as.data.frame(down)
+colnames(down)<-c("down")
+head(down)
+down<-c(down)
+
+
+data<-structure(list(up =up$up,down =down$down))
+data<-list(cluster2 =gene_cluster2$cluster2, cluster0 =gene_cluster0$cluster0, cluster1 = gene_cluster1$cluster1, cluster3=gene_cluster3$cluster3, cluster4=gene_cluster4$cluster4)
+
+lapply(data, head)
+
+
+ck <- compareCluster(geneCluster = data,OrgDb = org.Mm.eg.db, fun = "enrichGO", pvalueCutoff=0.05)
+ck_1 <- compareCluster(geneCluster = data, fun = "enrichKEGG",organism="mmu", pvalueCutoff=0.05)
+
+head(as.data.frame(ck))
+
+write.csv(ck,"go.csv")
+
+ck_enrichKEGG <- compareCluster(geneCluster = data, fun = "enrichKEGG",organism="mmu", pvalueCutoff=0.05)
+dotplot(ck_enrichKEGG, showCategory =20)
+
+
+
+#visualize the result using dotplot method.
+
+pdf("多样本富集分析-1.pdf",width=10,height=12)
+dotplot(ck, showCategory =20)
+dotplot(ck, showCategory =30,split="ONTOLOGY") 
+dotplot(ck_enrichKEGG, showCategory =20)
+
+dev.off()
+
+
+
+
 
 b<-as.data.frame(rownames(diff_gene))
 eg = bitr(b$`rownames(diff_gene)`, fromType="SYMBOL", toType="ENTREZID", OrgDb ="org.Mm.eg.db")
@@ -589,14 +647,13 @@ head(diff_gene)
 
 diff_gene<-merge(eg,diff_gene,by=c("SYMBOL"))
 
-
+head(GSEA_input)
 
 GSEA_input <- diff_gene$log2FoldChange
 names(GSEA_input) = diff_gene$ENTREZID
 GSEA_input = sort(GSEA_input, decreasing = TRUE)
-GSEA_KEGG <- gseKEGG(GSEA_input, organism = 'mmu', pvalueCutoff = 0.05)#GSEA富集分析
+GSEA_KEGG <- gseKEGG(GSEA_input, keyType = 'kegg',organism = 'mmu', nPerm = 1000, minGSSize = 120, pvalueCutoff = 0.9)#GSEA富集分析
 #https://zhuanlan.zhihu.com/p/377356510
-
 
 #GSEA富集图:
 library(clusterProfiler)
@@ -607,6 +664,40 @@ gseaplot2(GSEA_KEGG,1)
 gseaplot2(GSEA_KEGG,1:30)#30是根据ridgeplot中有30个富集通路得到的
 
 gseaplot2(GSEA_KEGG,2,pvalue_table = TRUE)#输出第212个结果
+
+
+
+DEG_mtx<-read.csv(file = "DEG_all.csv",row.names = 1)
+
+
+head(DEG_mtx)
+
+# 得到差异分析结果：DEG_mtx
+geneList <- DEG_mtx$log2FoldChange
+# 如果是Ensemble ID，并且如果还带着版本号，需要去除版本号，再进行基因ID转换，得到Entrez ID
+names(geneList) <-  str_split(rownames(DEG_mtx) ,
+                              pattern = '\\.',simplify = T)[,1]
+geneList_tr <- bitr(names(geneList), 
+                    fromType = "SYMBOL",
+                    toType = c("ENTREZID"),
+                    OrgDb = org.Mm.eg.db) 
+
+new_list <- data.frame(SYMBOL=names(geneList), 
+                       logFC = as.numeric(geneList)) 
+head(new_list)
+head(geneList_tr)
+new_list <- merge(new_list, geneList_tr, by  = "SYMBOL")
+geneList <- new_list$logFC 
+names(geneList) <- geneList_tr$ENTREZID 
+# 最后从大到小排序，得到一个字符串
+geneList <- sort(geneList,decreasing = T) 
+
+head(geneList)
+GSEA_KEGG <- gseKEGG(geneList, keyType = 'kegg',organism = 'mmu', nPerm = 1000, minGSSize = 120, pvalueCutoff = 0.9)#GSEA富集分析
+#https://zhuanlan.zhihu.com/p/377356510
+
+
+
 
 ##R语言准备gsea输入文件
 library(Seurat)
@@ -675,9 +766,10 @@ GOfile <- list.files(".", "go.csv")
 # * 3. Plot ---------------------------------------------------------------
 
 GOdata <- map(GOfile, ~ fread(.x)) %>% set_names(str_remove(GOfile, ".GO.*"))
-plotData <- GOdata %>% imap(~ {.x[pvalue < 0.05 & Count >= 5][1:10][, type := .y]})
+plotData <- GOdata %>% imap(~ {.x[pvalue < 0.05 & Count >= 5][1:20][, type := .y]})
 plotData %<>% map(~ {.x[, p := -log10(pvalue)]})
 head(plotData$go.csv,20)
+#plotData$go.csv<-plotData$go.csv[c(1:12)]
 GOplot <- imap(plotData, ~ {
   ggplot(.x, aes(x = p, y = fct_reorder(Description, p,))) +
     geom_col(aes(alpha = p), fill = "black", width = .8, show.legend = F) +
